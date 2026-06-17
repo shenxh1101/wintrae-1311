@@ -8,6 +8,7 @@ from models import (
     ReviewStatus,
     ExceptionType,
     ExceptionHandlingStatus,
+    TimeoutReminderLevel,
 )
 
 
@@ -292,3 +293,109 @@ class BlacklistTimelineResponse(BaseModel):
     total_operations: int
     current_status: str
     operation_logs: list[BlacklistOperationLogResponse] = []
+
+
+class ExceptionBatchHandleRequest(BaseModel):
+    exception_ids: list[int] = Field(..., min_length=1, description="异常记录ID列表")
+    handling_status: Optional[ExceptionHandlingStatus] = Field(None, description="处理状态")
+    handler_name: Optional[str] = Field(None, max_length=50, description="处理人姓名（分派）")
+    handling_note: Optional[str] = Field(None, description="统一处理说明")
+
+
+class ExceptionBatchHandleResponse(BaseModel):
+    success: bool
+    message: str
+    updated_count: int
+    skipped_count: int
+    skipped_ids: list[int] = []
+
+
+class ExceptionTimelineEvent(BaseModel):
+    event_type: str
+    event_time: datetime
+    description: str
+    operator: Optional[str] = None
+    details: Optional[dict] = None
+
+
+class ExceptionDetailWithTimelineResponse(ExceptionRecordResponse):
+    timeline: list[ExceptionTimelineEvent] = []
+
+
+class ExceptionStatsItem(BaseModel):
+    group_key: str
+    pending_count: int
+    in_progress_count: int
+    resolved_count: int
+    total_count: int
+    avg_handling_minutes: Optional[float] = None
+    overdue_count: int = 0
+
+
+class ExceptionStatsResponse(BaseModel):
+    by_type: list[ExceptionStatsItem] = []
+    by_building: list[ExceptionStatsItem] = []
+    by_handler: list[ExceptionStatsItem] = []
+    overall_pending: int
+    overall_in_progress: int
+    overall_resolved: int
+    overall_overdue: int
+    overall_avg_handling_minutes: Optional[float] = None
+
+
+class TimeoutReminderConfigCreate(BaseModel):
+    name: str = Field(..., max_length=100, description="规则名称")
+    timeout_minutes: int = Field(..., gt=0, description="超时分钟数")
+    reminder_level: TimeoutReminderLevel = Field(..., description="提醒级别")
+    recipient_name: str = Field(..., max_length=50, description="接收人姓名")
+    recipient_phone: Optional[str] = Field(None, max_length=20, description="接收人电话")
+    is_enabled: bool = Field(True, description="是否启用")
+
+
+class TimeoutReminderConfigUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100, description="规则名称")
+    timeout_minutes: Optional[int] = Field(None, gt=0, description="超时分钟数")
+    reminder_level: Optional[TimeoutReminderLevel] = Field(None, description="提醒级别")
+    recipient_name: Optional[str] = Field(None, max_length=50, description="接收人姓名")
+    recipient_phone: Optional[str] = Field(None, max_length=20, description="接收人电话")
+    is_enabled: Optional[bool] = Field(None, description="是否启用")
+
+
+class TimeoutReminderConfigResponse(BaseModel):
+    id: int
+    name: str
+    timeout_minutes: int
+    reminder_level: TimeoutReminderLevel
+    recipient_name: str
+    recipient_phone: Optional[str]
+    is_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TimeoutReminderLogResponse(BaseModel):
+    id: int
+    exception_record_id: int
+    appointment_id: Optional[int]
+    visitor_name: str
+    id_last_four: str
+    config_id: int
+    config_name: str
+    timeout_minutes: int
+    reminder_level: TimeoutReminderLevel
+    recipient_name: str
+    recipient_phone: Optional[str]
+    message: str
+    is_sent: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TimeoutReminderScanResponse(BaseModel):
+    scanned_count: int
+    new_reminders: int
+    already_reminded: int
+    reminder_log_ids: list[int] = []

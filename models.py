@@ -155,3 +155,42 @@ class ExceptionRecord(Base):
     handled_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
+
+
+class TimeoutReminderLevel(str, enum.Enum):
+    FRONT_DESK = "front_desk"
+    SECURITY_SUPERVISOR = "security_supervisor"
+    ADMIN = "admin"
+
+
+class TimeoutReminderConfig(Base):
+    __tablename__ = "timeout_reminder_configs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True)
+    timeout_minutes = Column(Integer, nullable=False)
+    reminder_level = Column(Enum(TimeoutReminderLevel), nullable=False)
+    recipient_name = Column(String(50), nullable=False)
+    recipient_phone = Column(String(20), nullable=True)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
+
+
+class TimeoutReminderLog(Base):
+    __tablename__ = "timeout_reminder_logs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    exception_record_id = Column(Integer, nullable=False)
+    appointment_id = Column(Integer, nullable=True)
+    visitor_name = Column(String(50), nullable=False)
+    id_last_four = Column(String(4), nullable=False)
+    config_id = Column(Integer, nullable=False)
+    config_name = Column(String(100), nullable=False)
+    timeout_minutes = Column(Integer, nullable=False)
+    reminder_level = Column(Enum(TimeoutReminderLevel), nullable=False)
+    recipient_name = Column(String(50), nullable=False)
+    recipient_phone = Column(String(20), nullable=True)
+    message = Column(Text, nullable=False)
+    is_sent = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
