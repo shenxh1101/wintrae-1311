@@ -1,7 +1,14 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from models import AppointmentStatus, NotificationType, BlacklistOperationType, ReviewStatus
+from models import (
+    AppointmentStatus,
+    NotificationType,
+    BlacklistOperationType,
+    ReviewStatus,
+    ExceptionType,
+    ExceptionHandlingStatus,
+)
 
 
 class AppointmentCreate(BaseModel):
@@ -221,25 +228,45 @@ class MessageResponse(BaseModel):
 
 
 class ExceptionRecordResponse(BaseModel):
-    appointment_id: int
+    id: int
+    appointment_id: Optional[int]
     visitor_name: str
     id_last_four: str
-    exception_type: str
+    license_plate: Optional[str]
+    exception_type: ExceptionType
     exception_reason: str
-    visit_date: str
-    target_employee_name: str
+    visit_date: Optional[str]
+    target_employee_name: Optional[str]
     target_company: Optional[str]
     target_building: Optional[str]
-    status: AppointmentStatus
-    handling_status: str
-    handler: Optional[str]
-    created_at: datetime
+    appointment_status: Optional[AppointmentStatus]
+    handling_status: ExceptionHandlingStatus
+    handling_note: Optional[str]
+    handler_name: Optional[str]
     handled_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class ExceptionListResponse(BaseModel):
     total: int
     items: list[ExceptionRecordResponse]
+
+
+class ExceptionHandleRequest(BaseModel):
+    exception_id: int = Field(..., description="异常记录ID")
+    handling_status: ExceptionHandlingStatus = Field(..., description="处理状态：pending/in_progress/resolved")
+    handling_note: Optional[str] = Field(None, description="处理说明")
+    handler_name: str = Field(..., max_length=50, description="处理人姓名")
+
+
+class ExceptionScanResponse(BaseModel):
+    scanned_count: int
+    newly_created: int
+    already_existed: int
+    timeout_ids: list[int] = []
 
 
 class BlacklistOperationLogResponse(BaseModel):
@@ -256,4 +283,12 @@ class BlacklistOperationLogResponse(BaseModel):
 
 
 class BlacklistWithOperationLogsResponse(BlacklistResponse):
+    operation_logs: list[BlacklistOperationLogResponse] = []
+
+
+class BlacklistTimelineResponse(BaseModel):
+    name: str
+    id_last_four: str
+    total_operations: int
+    current_status: str
     operation_logs: list[BlacklistOperationLogResponse] = []

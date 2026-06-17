@@ -10,6 +10,7 @@ from schemas import (
     MessageResponse,
     BlacklistOperationLogResponse,
     BlacklistWithOperationLogsResponse,
+    BlacklistTimelineResponse,
 )
 from services import check_blacklist
 
@@ -181,6 +182,56 @@ def list_all_operation_logs(
 
     logs = query.order_by(BlacklistOperationLog.created_at.desc()).offset(skip).limit(limit).all()
     return logs
+
+
+@router.get("/timeline/{name}/{id_last_four}", response_model=BlacklistTimelineResponse, summary="按姓名+证件后四位查询完整操作时间线")
+def get_blacklist_timeline(name: str, id_last_four: str, db: Session = Depends(get_db)):
+    logs = (
+        db.query(BlacklistOperationLog)
+        .filter(
+            BlacklistOperationLog.name == name,
+            BlacklistOperationLog.id_last_four == id_last_four,
+        )
+        .order_by(BlacklistOperationLog.created_at.asc())
+        .all()
+    )
+
+    if not logs:
+        all_records = (
+            db.query(Blacklist)
+            .filter(
+                Blacklist.name == name,
+                Blacklist.id_last_four == id_last_four,
+            )
+            .all()
+        )
+        if not all_records:
+            raise HTTPException(status_code=404, detail="未找到该人员的黑名单记录")
+
+    active_record = (
+        db.query(Blacklist)
+        .filter(
+            Blacklist.name == name,
+            Blacklist.id_last_four == id_last_four,
+            Blacklist.is_active == True,
+        )
+        .first()
+    )
+
+    if active_record:
+        current_status = "在黑名单中"
+    elif logs:
+        current_status = "不在黑名单中（已移出）"
+    else:
+        current_status = "不在黑名单中（无历史记录）"
+
+    return BlacklistTimelineResponse(
+        name=name,
+        id_last_four=id_last_four,
+        total_operations=len(logs),
+        current_status=current_status,
+        operation_logs=logs,
+    )
 
 
 @router.delete("/{entry_id}", response_model=MessageResponse, summary="移出黑名单")

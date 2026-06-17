@@ -4,9 +4,16 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Notification, NotificationType, ReviewStatus
+from models import (
+    Appointment,
+    AppointmentStatus,
+    Notification,
+    NotificationType,
+    ReviewStatus,
+    ExceptionType,
+)
 from schemas import CheckInRequest, CheckOutRequest, AppointmentResponse, MessageResponse, VerificationDeskResponse
-from services import check_blacklist
+from services import check_blacklist, create_exception_record
 
 router = APIRouter(prefix="/api/visit", tags=["入园核验"])
 
@@ -72,6 +79,12 @@ def check_in(data: CheckInRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="二维码对应的预约不存在")
 
     if appointment.status == AppointmentStatus.CHECKED_IN:
+        create_exception_record(
+            db,
+            ExceptionType.DUPLICATE_CHECKIN,
+            f"重复扫码：访客已在 {appointment.checkin_time.strftime('%H:%M')} 签到",
+            appointment=appointment,
+        )
         raise HTTPException(status_code=400, detail="该访客已签到，请勿重复操作")
 
     if appointment.status != AppointmentStatus.APPROVED:
@@ -86,6 +99,13 @@ def check_in(data: CheckInRequest, db: Session = Depends(get_db)):
         appointment.status = AppointmentStatus.REJECTED
         appointment.exception_reason = "签到时发现访客在黑名单中"
         db.commit()
+
+        create_exception_record(
+            db,
+            ExceptionType.BLACKLIST_INTERCEPT,
+            f"签到时黑名单校验未通过：{';'.join(b.reason for b in blacklist_hits)}",
+            appointment=appointment,
+        )
 
         notification = Notification(
             appointment_id=appointment.id,

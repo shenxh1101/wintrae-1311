@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Notification, NotificationType, ReviewStatus
+from models import Appointment, AppointmentStatus, Notification, NotificationType, ReviewStatus, ExceptionType
 from schemas import (
     AppointmentCreate,
     AppointmentReview,
@@ -11,7 +11,7 @@ from schemas import (
     AppointmentListResponse,
     MessageResponse,
 )
-from services import check_blacklist
+from services import check_blacklist, create_exception_record
 
 router = APIRouter(prefix="/api/appointments", tags=["访客预约"])
 
@@ -105,6 +105,14 @@ def review_appointment(data: AppointmentReview, db: Session = Depends(get_db)):
     )
     db.add(notification)
     db.commit()
+
+    if data.status == AppointmentStatus.REJECTED:
+        create_exception_record(
+            db,
+            ExceptionType.CHECKIN_REJECTED,
+            data.review_opinion or "审核拒绝",
+            appointment=appointment,
+        )
 
     return MessageResponse(
         success=True,

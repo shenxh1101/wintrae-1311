@@ -3,7 +3,7 @@ from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Employee, Notification, NotificationType, ReviewStatus
+from models import Appointment, AppointmentStatus, Employee, Notification, NotificationType, ReviewStatus, ExceptionType
 from schemas import (
     AppointmentResponse,
     AppointmentListResponse,
@@ -13,7 +13,7 @@ from schemas import (
     EmployeeResponse,
     MessageResponse,
 )
-from services import check_blacklist
+from services import check_blacklist, create_exception_record
 
 router = APIRouter(prefix="/api/management", tags=["管理端"])
 
@@ -87,6 +87,13 @@ def create_temporary_visit(data: TemporaryVisitCreate, db: Session = Depends(get
         db.commit()
         db.refresh(appointment)
 
+        create_exception_record(
+            db,
+            ExceptionType.BLACKLIST_INTERCEPT,
+            exception_msg,
+            appointment=appointment,
+        )
+
         notification = Notification(
             appointment_id=appointment.id,
             notification_type=NotificationType.BLACKLIST_ALERT,
@@ -147,6 +154,13 @@ def cancel_appointment(data: CancelAppointmentRequest, db: Session = Depends(get
         appointment.exception_reason = data.reason
 
     db.commit()
+
+    create_exception_record(
+        db,
+        ExceptionType.APPOINTMENT_CANCELLED,
+        data.reason or "预约已撤销",
+        appointment=appointment,
+    )
 
     return MessageResponse(
         success=True,

@@ -29,6 +29,20 @@ class NotificationType(str, enum.Enum):
     BLACKLIST_ALERT = "blacklist_alert"
 
 
+class ExceptionType(str, enum.Enum):
+    BLACKLIST_INTERCEPT = "blacklist_intercept"
+    APPOINTMENT_CANCELLED = "appointment_cancelled"
+    NOT_CHECKED_OUT_TIMEOUT = "not_checked_out_timeout"
+    DUPLICATE_CHECKIN = "duplicate_checkin"
+    CHECKIN_REJECTED = "checkin_rejected"
+
+
+class ExceptionHandlingStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+
+
 class Appointment(Base):
     __tablename__ = "appointments"
 
@@ -118,3 +132,26 @@ class Notification(Base):
     content = Column(Text, nullable=False)
     is_read = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+
+class ExceptionRecord(Base):
+    __tablename__ = "exception_records"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    appointment_id = Column(Integer, nullable=True)
+    visitor_name = Column(String(50), nullable=False)
+    id_last_four = Column(String(4), nullable=False)
+    license_plate = Column(String(20), nullable=True)
+    exception_type = Column(Enum(ExceptionType), nullable=False)
+    exception_reason = Column(Text, nullable=False)
+    visit_date = Column(String(10), nullable=True)
+    target_employee_name = Column(String(50), nullable=True)
+    target_company = Column(String(100), nullable=True)
+    target_building = Column(String(100), nullable=True)
+    appointment_status = Column(Enum(AppointmentStatus), nullable=True)
+    handling_status = Column(Enum(ExceptionHandlingStatus), nullable=False, default=ExceptionHandlingStatus.PENDING)
+    handling_note = Column(Text, nullable=True)
+    handler_name = Column(String(50), nullable=True)
+    handled_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
