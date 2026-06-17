@@ -4,8 +4,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Blacklist, Notification, NotificationType
-from schemas import CheckInRequest, CheckOutRequest, AppointmentResponse, MessageResponse
+from models import Appointment, AppointmentStatus, Notification, NotificationType
+from schemas import CheckInRequest, CheckOutRequest, AppointmentResponse, MessageResponse, VerificationDeskResponse
+from services import check_blacklist
 
 router = APIRouter(prefix="/api/visit", tags=["入园核验"])
 
@@ -79,18 +80,7 @@ def check_in(data: CheckInRequest, db: Session = Depends(get_db)):
             detail=f"当前预约状态为 {appointment.status.value}，无法签到",
         )
 
-    blacklist_hits = (
-        db.query(Blacklist)
-        .filter(
-            Blacklist.is_active == True,
-            Blacklist.name == appointment.visitor_name,
-        )
-        .all()
-    )
-    if appointment.id_last_four:
-        blacklist_hits = [
-            b for b in blacklist_hits if b.id_last_four is None or b.id_last_four == appointment.id_last_four
-        ]
+    blacklist_hits = check_blacklist(db, appointment.visitor_name, appointment.id_last_four)
 
     if blacklist_hits:
         appointment.status = AppointmentStatus.REJECTED
@@ -166,4 +156,69 @@ def check_out(data: CheckOutRequest, db: Session = Depends(get_db)):
         success=True,
         message="离园登记成功",
         data={"appointment_id": appointment.id, "checkout_time": appointment.checkout_time.isoformat()},
+    )
+
+
+@router.get("/desk/{qr_code}", response_model=VerificationDeskResponse, summary="前台核验台-扫码综合查询")
+def verification_desk(qr_code: str, db: Session = Depends(get_db)):
+    appointment = db.query(Appointment).filter(Appointment.qr_code == qr_code).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="二维码对应的预约不存在")
+
+    blacklist_hits = check_blacklist(db, appointment.visitor_name, appointment.id_last_four)
+    is_blacklisted = len(blacklist_hits) > 0
+    blacklist_reasons = [b.reason for b in blacklist_hits]
+
+    can_admit = False
+    admit_decision = ""
+
+    if is_blacklisted:
+        can_admit = False
+        admit_decision = "禁止放行：访客在黑名单中"
+    elif appointment.status == AppointmentStatus.CHECKED_OUT:
+        can_admit = False
+        admit_decision = "已离园：该访客已完成离园登记"
+    elif appointment.status == AppointmentStatus.CHECKED_IN:
+        can_admit = False
+        admit_decision = "已在园：该访客已签到入园，无需重复放行"
+    elif appointment.status == AppointmentStatus.APPROVED:
+        can_admit = True
+        admit_decision = "允许放行：预约已审核通过，可签到入园"
+    elif appointment.status == AppointmentStatus.PENDING:
+        can_admit = False
+        admit_decision = "暂不放行：预约待审核，需等待员工确认"
+    elif appointment.status == AppointmentStatus.REJECTED:
+        can_admit = False
+        admit_decision = "禁止放行：预约已被拒绝"
+    elif appointment.status == AppointmentStatus.CANCELLED:
+        can_admit = False
+        admit_decision = "禁止放行：预约已撤销"
+
+    return VerificationDeskResponse(
+        appointment_id=appointment.id,
+        visitor_name=appointment.visitor_name,
+        visitor_phone=appointment.visitor_phone,
+        id_last_four=appointment.id_last_four,
+        license_plate=appointment.license_plate,
+        companions_count=appointment.companions_count,
+        target_employee_name=appointment.target_employee_name,
+        target_company=appointment.target_company,
+        target_building=appointment.target_building,
+        purpose=appointment.purpose,
+        visit_date=appointment.visit_date,
+        visit_time_start=appointment.visit_time_start,
+        visit_time_end=appointment.visit_time_end,
+        status=appointment.status,
+        is_temporary=appointment.is_temporary,
+        review_opinion=appointment.review_opinion,
+        reviewer_name=appointment.reviewer_name,
+        reviewed_at=appointment.reviewed_at,
+        checkin_time=appointment.checkin_time,
+        checkout_time=appointment.checkout_time,
+        verification_result=appointment.verification_result,
+        exception_reason=appointment.exception_reason,
+        is_blacklisted=is_blacklisted,
+        blacklist_reasons=blacklist_reasons,
+        can_admit=can_admit,
+        admit_decision=admit_decision,
     )

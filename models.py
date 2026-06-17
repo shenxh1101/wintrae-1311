@@ -73,7 +73,7 @@ class Blacklist(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(50), nullable=False)
-    id_last_four = Column(String(4), nullable=True)
+    id_last_four = Column(String(4), nullable=False)
     phone = Column(String(20), nullable=True)
     reason = Column(Text, nullable=False)
     added_by = Column(String(50), nullable=True)

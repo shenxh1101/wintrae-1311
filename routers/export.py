@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -10,8 +11,7 @@ from schemas import ExportRequest, AppointmentListResponse, MessageResponse
 router = APIRouter(prefix="/api/export", tags=["数据导出"])
 
 
-@router.post("/query", response_model=AppointmentListResponse, summary="按时间查询访问记录")
-def query_records(data: ExportRequest, db: Session = Depends(get_db)):
+def _build_export_query(data: ExportRequest, db: Session):
     query = db.query(Appointment).filter(
         Appointment.visit_date >= data.start_date,
         Appointment.visit_date <= data.end_date,
@@ -22,25 +22,29 @@ def query_records(data: ExportRequest, db: Session = Depends(get_db)):
         query = query.filter(Appointment.target_building == data.target_building)
     if data.status:
         query = query.filter(Appointment.status == data.status)
+    if data.checkin_time_start:
+        query = query.filter(Appointment.checkin_time >= data.checkin_time_start)
+    if data.checkin_time_end:
+        query = query.filter(Appointment.checkin_time <= data.checkin_time_end)
+    if data.checkout_time_start:
+        query = query.filter(Appointment.checkout_time >= data.checkout_time_start)
+    if data.checkout_time_end:
+        query = query.filter(Appointment.checkout_time <= data.checkout_time_end)
+    if data.exception_reason:
+        query = query.filter(Appointment.exception_reason.contains(data.exception_reason))
 
-    appointments = query.order_by(Appointment.visit_date.desc(), Appointment.created_at.desc()).all()
+    return query.order_by(Appointment.visit_date.desc(), Appointment.created_at.desc())
+
+
+@router.post("/query", response_model=AppointmentListResponse, summary="按时间查询访问记录")
+def query_records(data: ExportRequest, db: Session = Depends(get_db)):
+    appointments = _build_export_query(data, db).all()
     return AppointmentListResponse(total=len(appointments), items=appointments)
 
 
 @router.post("/csv", summary="导出访问记录为CSV")
 def export_csv(data: ExportRequest, db: Session = Depends(get_db)):
-    query = db.query(Appointment).filter(
-        Appointment.visit_date >= data.start_date,
-        Appointment.visit_date <= data.end_date,
-    )
-    if data.target_company:
-        query = query.filter(Appointment.target_company == data.target_company)
-    if data.target_building:
-        query = query.filter(Appointment.target_building == data.target_building)
-    if data.status:
-        query = query.filter(Appointment.status == data.status)
-
-    appointments = query.order_by(Appointment.visit_date.desc(), Appointment.created_at.desc()).all()
+    appointments = _build_export_query(data, db).all()
 
     output = io.StringIO()
     output.write("\ufeff")
@@ -48,13 +52,36 @@ def export_csv(data: ExportRequest, db: Session = Depends(get_db)):
     writer.writerow([
         "预约ID", "访客姓名", "证件后四位", "手机号", "车牌号", "随行人数",
         "来访对象", "来访公司", "来访楼栋", "来访事由", "来访日期",
-        "开始时间", "结束时间", "状态", "是否临时",
-        "审核意见", "审核人", "审核时间",
-        "签到时间", "离园时间", "核验结果", "异常原因",
-        "创建时间",
+        "来访时段", "是否临时",
+        "审核结果", "审核意见", "审核人", "审核时间",
+        "签到时间", "核验结果",
+        "离园时间", "在园时长",
+        "异常原因", "当前状态",
     ])
 
     for a in appointments:
+        duration = ""
+        if a.checkin_time and a.checkout_time:
+            delta = a.checkout_time - a.checkin_time
+            hours, remainder = divmod(int(delta.total_seconds()), 3600)
+            minutes, _ = divmod(remainder, 60)
+            duration = f"{hours}小时{minutes}分钟"
+
+        status_label = {
+            AppointmentStatus.PENDING: "待审核",
+            AppointmentStatus.APPROVED: "已审核",
+            AppointmentStatus.REJECTED: "已拒绝",
+            AppointmentStatus.CANCELLED: "已撤销",
+            AppointmentStatus.CHECKED_IN: "已签到",
+            AppointmentStatus.CHECKED_OUT: "已离园",
+        }.get(a.status, a.status.value)
+
+        review_result = ""
+        if a.reviewed_at:
+            review_result = "通过" if a.status in (
+                AppointmentStatus.APPROVED, AppointmentStatus.CHECKED_IN, AppointmentStatus.CHECKED_OUT
+            ) else "拒绝"
+
         writer.writerow([
             a.id,
             a.visitor_name,
@@ -67,18 +94,18 @@ def export_csv(data: ExportRequest, db: Session = Depends(get_db)):
             a.target_building or "",
             a.purpose or "",
             a.visit_date,
-            a.visit_time_start or "",
-            a.visit_time_end or "",
-            a.status.value,
+            f"{a.visit_time_start or ''}-{a.visit_time_end or ''}",
             "是" if a.is_temporary else "否",
+            review_result,
             a.review_opinion or "",
             a.reviewer_name or "",
             a.reviewed_at.strftime("%Y-%m-%d %H:%M:%S") if a.reviewed_at else "",
             a.checkin_time.strftime("%Y-%m-%d %H:%M:%S") if a.checkin_time else "",
-            a.checkout_time.strftime("%Y-%m-%d %H:%M:%S") if a.checkout_time else "",
             a.verification_result or "",
+            a.checkout_time.strftime("%Y-%m-%d %H:%M:%S") if a.checkout_time else "",
+            duration,
             a.exception_reason or "",
-            a.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            status_label,
         ])
 
     output.seek(0)

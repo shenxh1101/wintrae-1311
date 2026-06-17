@@ -3,7 +3,7 @@ from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Employee
+from models import Appointment, AppointmentStatus, Employee, Notification, NotificationType
 from schemas import (
     AppointmentResponse,
     AppointmentListResponse,
@@ -13,6 +13,7 @@ from schemas import (
     EmployeeResponse,
     MessageResponse,
 )
+from services import check_blacklist
 
 router = APIRouter(prefix="/api/management", tags=["管理端"])
 
@@ -56,6 +57,49 @@ def filter_visitors(
 
 @router.post("/temporary", response_model=MessageResponse, summary="补录临时来访")
 def create_temporary_visit(data: TemporaryVisitCreate, db: Session = Depends(get_db)):
+    blacklist_hits = check_blacklist(db, data.visitor_name, data.id_last_four)
+
+    if blacklist_hits:
+        reasons = "；".join(b.reason for b in blacklist_hits)
+        exception_msg = f"补录时黑名单校验未通过：{reasons}"
+
+        qr_code = f"TMP-{uuid.uuid4().hex[:12].upper()}"
+        today = date.today().isoformat()
+
+        appointment = Appointment(
+            visitor_name=data.visitor_name,
+            visitor_phone=data.visitor_phone,
+            id_last_four=data.id_last_four,
+            license_plate=data.license_plate,
+            companions_count=data.companions_count,
+            target_employee_name=data.target_employee_name,
+            target_company=data.target_company,
+            target_building=data.target_building,
+            purpose=data.purpose,
+            visit_date=today,
+            status=AppointmentStatus.REJECTED,
+            qr_code=qr_code,
+            is_temporary=True,
+            exception_reason=exception_msg,
+        )
+        db.add(appointment)
+        db.commit()
+        db.refresh(appointment)
+
+        notification = Notification(
+            appointment_id=appointment.id,
+            notification_type=NotificationType.BLACKLIST_ALERT,
+            content=f"临时补录拦截：访客 {data.visitor_name}（证件后四位 {data.id_last_four}）在黑名单中，原因：{reasons}",
+        )
+        db.add(notification)
+        db.commit()
+
+        return MessageResponse(
+            success=False,
+            message="该访客在黑名单中，临时补录已拦截",
+            data={"appointment_id": appointment.id, "exception_reason": exception_msg},
+        )
+
     today = date.today().isoformat()
     qr_code = f"TMP-{uuid.uuid4().hex[:12].upper()}"
 
@@ -74,6 +118,7 @@ def create_temporary_visit(data: TemporaryVisitCreate, db: Session = Depends(get
         qr_code=qr_code,
         is_temporary=True,
         checkin_time=datetime.now(),
+        verification_result="补录通过",
     )
     db.add(appointment)
     db.commit()

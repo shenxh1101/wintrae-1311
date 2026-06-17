@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Blacklist, Notification, NotificationType
+from models import Appointment, AppointmentStatus, Notification, NotificationType
 from schemas import (
     AppointmentCreate,
     AppointmentReview,
@@ -11,22 +11,14 @@ from schemas import (
     AppointmentListResponse,
     MessageResponse,
 )
+from services import check_blacklist
 
 router = APIRouter(prefix="/api/appointments", tags=["访客预约"])
 
 
 @router.post("/", response_model=MessageResponse, summary="提交访客预约")
 def create_appointment(data: AppointmentCreate, db: Session = Depends(get_db)):
-    blacklist_hits = (
-        db.query(Blacklist)
-        .filter(
-            Blacklist.is_active == True,
-            Blacklist.name == data.visitor_name,
-        )
-        .all()
-    )
-    if data.id_last_four:
-        blacklist_hits = [b for b in blacklist_hits if b.id_last_four is None or b.id_last_four == data.id_last_four]
+    blacklist_hits = check_blacklist(db, data.visitor_name, data.id_last_four)
 
     if blacklist_hits:
         raise HTTPException(status_code=403, detail="该访客在黑名单中，无法预约")

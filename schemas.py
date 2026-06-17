@@ -75,7 +75,7 @@ class CheckOutRequest(BaseModel):
 
 class BlacklistCreate(BaseModel):
     name: str = Field(..., max_length=50, description="姓名")
-    id_last_four: Optional[str] = Field(None, min_length=4, max_length=4, description="证件后四位")
+    id_last_four: str = Field(..., min_length=4, max_length=4, description="证件后四位")
     phone: Optional[str] = Field(None, max_length=20, description="手机号")
     reason: str = Field(..., description="加入黑名单原因")
     added_by: Optional[str] = Field(None, max_length=50, description="操作人")
@@ -84,7 +84,7 @@ class BlacklistCreate(BaseModel):
 class BlacklistResponse(BaseModel):
     id: int
     name: str
-    id_last_four: Optional[str]
+    id_last_four: str
     phone: Optional[str]
     reason: str
     added_by: Optional[str]
@@ -96,7 +96,7 @@ class BlacklistResponse(BaseModel):
 
 class BlacklistCheckRequest(BaseModel):
     name: str = Field(..., max_length=50, description="姓名")
-    id_last_four: Optional[str] = Field(None, min_length=4, max_length=4, description="证件后四位")
+    id_last_four: str = Field(..., min_length=4, max_length=4, description="证件后四位")
 
 
 class BlacklistCheckResponse(BaseModel):
@@ -171,6 +171,40 @@ class ExportRequest(BaseModel):
     target_company: Optional[str] = Field(None, max_length=100, description="按公司筛选")
     target_building: Optional[str] = Field(None, max_length=100, description="按楼栋筛选")
     status: Optional[AppointmentStatus] = Field(None, description="按状态筛选")
+    checkin_time_start: Optional[str] = Field(None, description="签到时间起(YYYY-MM-DD HH:MM:SS)")
+    checkin_time_end: Optional[str] = Field(None, description="签到时间止(YYYY-MM-DD HH:MM:SS)")
+    checkout_time_start: Optional[str] = Field(None, description="离园时间起(YYYY-MM-DD HH:MM:SS)")
+    checkout_time_end: Optional[str] = Field(None, description="离园时间止(YYYY-MM-DD HH:MM:SS)")
+    exception_reason: Optional[str] = Field(None, description="异常原因关键词筛选")
+
+
+class VerificationDeskResponse(BaseModel):
+    appointment_id: int
+    visitor_name: str
+    visitor_phone: Optional[str]
+    id_last_four: str
+    license_plate: Optional[str]
+    companions_count: int
+    target_employee_name: str
+    target_company: Optional[str]
+    target_building: Optional[str]
+    purpose: Optional[str]
+    visit_date: str
+    visit_time_start: Optional[str]
+    visit_time_end: Optional[str]
+    status: AppointmentStatus
+    is_temporary: bool
+    review_opinion: Optional[str]
+    reviewer_name: Optional[str]
+    reviewed_at: Optional[datetime]
+    checkin_time: Optional[datetime]
+    checkout_time: Optional[datetime]
+    verification_result: Optional[str]
+    exception_reason: Optional[str]
+    is_blacklisted: bool
+    blacklist_reasons: list[str] = []
+    can_admit: bool
+    admit_decision: str
 
 
 class MessageResponse(BaseModel):
