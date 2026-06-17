@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Notification, NotificationType
+from models import Appointment, AppointmentStatus, Notification, NotificationType, ReviewStatus
 from schemas import (
     AppointmentCreate,
     AppointmentReview,
@@ -75,6 +75,9 @@ def review_appointment(data: AppointmentReview, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="审核结果只能为 approved 或 rejected")
 
     appointment.status = data.status
+    appointment.review_status = (
+        ReviewStatus.APPROVED if data.status == AppointmentStatus.APPROVED else ReviewStatus.REJECTED
+    )
     appointment.review_opinion = data.review_opinion
     appointment.reviewer_name = data.reviewer_name
     appointment.reviewed_at = datetime.now()

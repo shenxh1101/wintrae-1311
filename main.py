@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import appointment, visit, blacklist, notification, management, export
+from routers import appointment, visit, blacklist, notification, management, export, exceptions
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,6 +25,7 @@ app.include_router(blacklist.router)
 app.include_router(notification.router)
 app.include_router(management.router)
 app.include_router(export.router)
+app.include_router(exceptions.router)
 
 
 @app.get("/", tags=["系统"])

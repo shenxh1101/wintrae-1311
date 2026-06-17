@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Notification, NotificationType
+from models import Appointment, AppointmentStatus, Notification, NotificationType, ReviewStatus
 from schemas import CheckInRequest, CheckOutRequest, AppointmentResponse, MessageResponse, VerificationDeskResponse
 from services import check_blacklist
 
@@ -169,30 +169,61 @@ def verification_desk(qr_code: str, db: Session = Depends(get_db)):
     is_blacklisted = len(blacklist_hits) > 0
     blacklist_reasons = [b.reason for b in blacklist_hits]
 
+    review_conclusion_map = {
+        ReviewStatus.PENDING: "待审核",
+        ReviewStatus.APPROVED: "审核通过",
+        ReviewStatus.REJECTED: "审核拒绝",
+    }
+    review_conclusion = review_conclusion_map.get(appointment.review_status, "未知")
+
+    if appointment.checkin_time:
+        checkin_status = f"已签到（{appointment.checkin_time.strftime('%H:%M')}）"
+    else:
+        checkin_status = "未签到"
+
+    if appointment.checkout_time:
+        checkout_status = f"已离园（{appointment.checkout_time.strftime('%H:%M')}）"
+    else:
+        checkout_status = "未离园"
+
     can_admit = False
-    admit_decision = ""
+    admission_suggestion = ""
 
     if is_blacklisted:
         can_admit = False
-        admit_decision = "禁止放行：访客在黑名单中"
+        admission_suggestion = "禁止放行：访客在黑名单中，请联系安保处理"
     elif appointment.status == AppointmentStatus.CHECKED_OUT:
         can_admit = False
-        admit_decision = "已离园：该访客已完成离园登记"
+        admission_suggestion = "已离园：该访客已完成离园登记"
     elif appointment.status == AppointmentStatus.CHECKED_IN:
         can_admit = False
-        admit_decision = "已在园：该访客已签到入园，无需重复放行"
+        admission_suggestion = "已在园：该访客已签到入园，无需重复放行"
     elif appointment.status == AppointmentStatus.APPROVED:
         can_admit = True
-        admit_decision = "允许放行：预约已审核通过，可签到入园"
+        admission_suggestion = "允许放行：预约已审核通过，可签到入园"
     elif appointment.status == AppointmentStatus.PENDING:
         can_admit = False
-        admit_decision = "暂不放行：预约待审核，需等待员工确认"
+        admission_suggestion = "暂不放行：预约待审核，需等待员工确认"
     elif appointment.status == AppointmentStatus.REJECTED:
         can_admit = False
-        admit_decision = "禁止放行：预约已被拒绝"
+        admission_suggestion = "禁止放行：预约已被拒绝"
     elif appointment.status == AppointmentStatus.CANCELLED:
         can_admit = False
-        admit_decision = "禁止放行：预约已撤销"
+        admission_suggestion = "禁止放行：预约已撤销"
+
+    if appointment.exception_reason:
+        exception_reason_display = appointment.exception_reason
+    elif is_blacklisted:
+        exception_reason_display = "黑名单拦截：" + "；".join(blacklist_reasons)
+    else:
+        exception_reason_display = "无异常"
+
+    if is_blacklisted or appointment.status in (AppointmentStatus.REJECTED, AppointmentStatus.CANCELLED):
+        handling_status = "待处理" if not appointment.verification_result else "已处理"
+    else:
+        handling_status = "正常"
+
+    handler = appointment.reviewer_name if appointment.reviewer_name else None
 
     return VerificationDeskResponse(
         appointment_id=appointment.id,
@@ -210,6 +241,7 @@ def verification_desk(qr_code: str, db: Session = Depends(get_db)):
         visit_time_end=appointment.visit_time_end,
         status=appointment.status,
         is_temporary=appointment.is_temporary,
+        review_status=appointment.review_status,
         review_opinion=appointment.review_opinion,
         reviewer_name=appointment.reviewer_name,
         reviewed_at=appointment.reviewed_at,
@@ -220,5 +252,11 @@ def verification_desk(qr_code: str, db: Session = Depends(get_db)):
         is_blacklisted=is_blacklisted,
         blacklist_reasons=blacklist_reasons,
         can_admit=can_admit,
-        admit_decision=admit_decision,
+        review_conclusion=review_conclusion,
+        checkin_status=checkin_status,
+        checkout_status=checkout_status,
+        admission_suggestion=admission_suggestion,
+        exception_reason_display=exception_reason_display,
+        handling_status=handling_status,
+        handler=handler,
     )

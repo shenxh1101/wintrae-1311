@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from models import AppointmentStatus, NotificationType
+from models import AppointmentStatus, NotificationType, BlacklistOperationType, ReviewStatus
 
 
 class AppointmentCreate(BaseModel):
@@ -194,6 +194,7 @@ class VerificationDeskResponse(BaseModel):
     visit_time_end: Optional[str]
     status: AppointmentStatus
     is_temporary: bool
+    review_status: ReviewStatus
     review_opinion: Optional[str]
     reviewer_name: Optional[str]
     reviewed_at: Optional[datetime]
@@ -204,10 +205,55 @@ class VerificationDeskResponse(BaseModel):
     is_blacklisted: bool
     blacklist_reasons: list[str] = []
     can_admit: bool
-    admit_decision: str
+    review_conclusion: str
+    checkin_status: str
+    checkout_status: str
+    admission_suggestion: str
+    exception_reason_display: str
+    handling_status: str
+    handler: Optional[str]
 
 
 class MessageResponse(BaseModel):
     success: bool
     message: str
     data: Optional[dict | list | None] = None
+
+
+class ExceptionRecordResponse(BaseModel):
+    appointment_id: int
+    visitor_name: str
+    id_last_four: str
+    exception_type: str
+    exception_reason: str
+    visit_date: str
+    target_employee_name: str
+    target_company: Optional[str]
+    target_building: Optional[str]
+    status: AppointmentStatus
+    handling_status: str
+    handler: Optional[str]
+    created_at: datetime
+    handled_at: Optional[datetime]
+
+
+class ExceptionListResponse(BaseModel):
+    total: int
+    items: list[ExceptionRecordResponse]
+
+
+class BlacklistOperationLogResponse(BaseModel):
+    id: int
+    blacklist_id: int
+    name: str
+    id_last_four: str
+    operation_type: BlacklistOperationType
+    reason: str
+    operator_name: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BlacklistWithOperationLogsResponse(BlacklistResponse):
+    operation_logs: list[BlacklistOperationLogResponse] = []

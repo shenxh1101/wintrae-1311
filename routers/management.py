@@ -3,7 +3,7 @@ from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus, Employee, Notification, NotificationType
+from models import Appointment, AppointmentStatus, Employee, Notification, NotificationType, ReviewStatus
 from schemas import (
     AppointmentResponse,
     AppointmentListResponse,
@@ -80,6 +80,7 @@ def create_temporary_visit(data: TemporaryVisitCreate, db: Session = Depends(get
             status=AppointmentStatus.REJECTED,
             qr_code=qr_code,
             is_temporary=True,
+            review_status=ReviewStatus.REJECTED,
             exception_reason=exception_msg,
         )
         db.add(appointment)
@@ -117,6 +118,7 @@ def create_temporary_visit(data: TemporaryVisitCreate, db: Session = Depends(get
         status=AppointmentStatus.CHECKED_IN,
         qr_code=qr_code,
         is_temporary=True,
+        review_status=ReviewStatus.APPROVED,
         checkin_time=datetime.now(),
         verification_result="补录通过",
     )

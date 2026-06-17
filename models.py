@@ -13,6 +13,12 @@ class AppointmentStatus(str, enum.Enum):
     CHECKED_OUT = "checked_out"
 
 
+class ReviewStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class NotificationType(str, enum.Enum):
     APPOINTMENT_CREATED = "appointment_created"
     APPOINTMENT_APPROVED = "appointment_approved"
@@ -43,6 +49,7 @@ class Appointment(Base):
     status = Column(Enum(AppointmentStatus), nullable=False, default=AppointmentStatus.PENDING)
     qr_code = Column(String(200), nullable=True, unique=True)
     is_temporary = Column(Boolean, nullable=False, default=False)
+    review_status = Column(Enum(ReviewStatus), nullable=False, default=ReviewStatus.PENDING)
     review_opinion = Column(Text, nullable=True)
     reviewer_name = Column(String(50), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
@@ -78,6 +85,25 @@ class Blacklist(Base):
     reason = Column(Text, nullable=False)
     added_by = Column(String(50), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+
+
+class BlacklistOperationType(str, enum.Enum):
+    ADD = "add"
+    REMOVE = "remove"
+    RE_ADD = "re_add"
+
+
+class BlacklistOperationLog(Base):
+    __tablename__ = "blacklist_operation_logs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    blacklist_id = Column(Integer, nullable=False)
+    name = Column(String(50), nullable=False)
+    id_last_four = Column(String(4), nullable=False)
+    operation_type = Column(Enum(BlacklistOperationType), nullable=False)
+    reason = Column(Text, nullable=False)
+    operator_name = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
 
 

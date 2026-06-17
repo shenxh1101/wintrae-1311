@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Appointment, AppointmentStatus
+from models import Appointment, AppointmentStatus, ReviewStatus
 from schemas import ExportRequest, AppointmentListResponse, MessageResponse
 
 router = APIRouter(prefix="/api/export", tags=["数据导出"])
@@ -56,7 +56,7 @@ def export_csv(data: ExportRequest, db: Session = Depends(get_db)):
         "审核结果", "审核意见", "审核人", "审核时间",
         "签到时间", "核验结果",
         "离园时间", "在园时长",
-        "异常原因", "当前状态",
+        "入离园状态", "异常类型", "异常原因",
     ])
 
     for a in appointments:
@@ -69,18 +69,28 @@ def export_csv(data: ExportRequest, db: Session = Depends(get_db)):
 
         status_label = {
             AppointmentStatus.PENDING: "待审核",
-            AppointmentStatus.APPROVED: "已审核",
+            AppointmentStatus.APPROVED: "待签到",
             AppointmentStatus.REJECTED: "已拒绝",
             AppointmentStatus.CANCELLED: "已撤销",
-            AppointmentStatus.CHECKED_IN: "已签到",
+            AppointmentStatus.CHECKED_IN: "在园",
             AppointmentStatus.CHECKED_OUT: "已离园",
         }.get(a.status, a.status.value)
 
-        review_result = ""
-        if a.reviewed_at:
-            review_result = "通过" if a.status in (
-                AppointmentStatus.APPROVED, AppointmentStatus.CHECKED_IN, AppointmentStatus.CHECKED_OUT
-            ) else "拒绝"
+        review_label = {
+            ReviewStatus.PENDING: "待审核",
+            ReviewStatus.APPROVED: "通过",
+            ReviewStatus.REJECTED: "拒绝",
+        }.get(a.review_status, "")
+
+        exception_type = ""
+        if a.status == AppointmentStatus.CANCELLED:
+            exception_type = "预约撤销"
+        elif a.exception_reason and "黑名单" in a.exception_reason:
+            exception_type = "黑名单拦截"
+        elif a.status == AppointmentStatus.REJECTED and a.review_status == ReviewStatus.REJECTED:
+            exception_type = "审核拒绝"
+        elif a.status == AppointmentStatus.REJECTED and a.review_status == ReviewStatus.APPROVED:
+            exception_type = "签到拦截（先通过后拦截）"
 
         writer.writerow([
             a.id,
@@ -96,7 +106,7 @@ def export_csv(data: ExportRequest, db: Session = Depends(get_db)):
             a.visit_date,
             f"{a.visit_time_start or ''}-{a.visit_time_end or ''}",
             "是" if a.is_temporary else "否",
-            review_result,
+            review_label,
             a.review_opinion or "",
             a.reviewer_name or "",
             a.reviewed_at.strftime("%Y-%m-%d %H:%M:%S") if a.reviewed_at else "",
@@ -104,8 +114,9 @@ def export_csv(data: ExportRequest, db: Session = Depends(get_db)):
             a.verification_result or "",
             a.checkout_time.strftime("%Y-%m-%d %H:%M:%S") if a.checkout_time else "",
             duration,
-            a.exception_reason or "",
             status_label,
+            exception_type,
+            a.exception_reason or "",
         ])
 
     output.seek(0)
